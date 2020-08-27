@@ -1,1 +1,2 @@
-soon to come, just using normal shell and ncat to receive connection
+im liking this one far more then the python version
+learnt alot
