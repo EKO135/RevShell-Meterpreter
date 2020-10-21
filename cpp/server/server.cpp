@@ -6,13 +6,13 @@ const char* success = "\x1B[38;5;2m[+]\033[0m:";
 
 
 void Server::handler_print_help() {
-    printf("\x1B[38;5;8m========================================================\033[0m\n");
-    printf("help\t\tShows this help\n");
-    printf("list\t\tLists connected clients\n");
-    printf("select\t\tSelects a client by its index\n");
-    printf("exit|quit\tStops current connections with a client\n");
-    printf("shutdown\tShuts server down\n");
-    printf("\x1B[38;5;8m========================================================\033[0m");
+    printf("\x1B[38;5;8m========================================================\033[0m\n"
+                "help\t\tShows this help\n"
+                "list\t\tLists connected clients\n"
+                "select\t\tSelects a client by its index\n"
+                "exit|quit\tStops current connections with a client\n"
+                "shutdown\tShuts server down\n"
+    "\x1B[38;5;8m========================================================\033[0m");
 }
 
 void Server::initialize() {
@@ -26,9 +26,12 @@ void Server::initialize() {
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = AI_PASSIVE;
-
+    
     // Resolve the server address and port
-    iResult = getaddrinfo(NULL, lport, &hints, &AddrInfo);
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    lport_str = converter.to_bytes(lport);
+    //printf("port: %s\n", lport_str.c_str());
+    iResult = getaddrinfo(NULL, (PCSTR)lport_str.c_str(), &hints, &AddrInfo);
     if (iResult != 0) {
         printf("getaddrinfo failed with error: %d\n", iResult);
         WSACleanup();
@@ -65,13 +68,12 @@ void Server::create_socket() {
     int error_code;
     if (setsockopt(ListenSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&error_code, sizeof(error_code)) == SOCKET_ERROR)
     {
-        printf("%s Error Setting TCP SOcket Options! Error: %s\n", failed, WSAGetLastError());
+        printf("%s Error Setting TCP SOcket Options! Error: %d\n", failed, WSAGetLastError());
         freeaddrinfo(AddrInfo);
         WSACleanup();
         return;
     }
     printf("Socket Created | ");
-    return;
 }
 
 
@@ -80,14 +82,13 @@ void Server::bind_socket() {
     iResult = bind(ListenSocket, AddrInfo->ai_addr, (int)AddrInfo->ai_addrlen);
     listen(ListenSocket, SOMAXCONN);
     
-    if (iResult == SOCKET_ERROR) {
+    if (iResult == SOCKET_ERROR || iResult == INVALID_SOCKET) {
         printf("%s socket binding failed with error: %d\n", failed, WSAGetLastError());
         std::this_thread::sleep_for(std::chrono::seconds(10));
         bind_socket();
     }
     freeaddrinfo(AddrInfo); // clear AddrInfo, dont need anymore
     printf("Socket Bind | ");
-    return;
 }
 
 
@@ -110,20 +111,20 @@ void Server::accept_connections() {
     // vector to hold array of index,ip,port,hostname
     std::vector<LPCSTR> address;
     // nice colors...
-    printf("========================================================================\n");
-    printf("Starting Listener -> \x1B[38;5;111mLHOST: \x1B[38;5;221m%s\033[0m | ", localIP);
-    printf(                     "\x1B[38;5;111mLPORT: \x1B[38;5;221m%s\033[0m\n\n", lport);
+    printf("========================================================================\n"
+           "Starting Listener -> \x1B[38;5;111mLHOST: \x1B[38;5;221m%s\033[0m | "
+                                "\x1B[38;5;111mLPORT: \x1B[38;5;221m%ws\033[0m\n\n", localIP, lport.c_str());
     
     // loop indefinateley
     while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         try {
-            ClientSocket = accept(ListenSocket, NULL, NULL); // accept client sockets to server
-            recv(ClientSocket, TargetIP, BUFFER_SIZE, 0); // receive ip address
+            ClientSocket = accept(ListenSocket, NULL, NULL);    // accept client sockets to server
+            recv(ClientSocket, TargetIP, BUFFER_SIZE, 0);       // receive ip address
             recv(ClientSocket, TargetHostname, BUFFER_SIZE, 0); // receive hostname
-            
-            address.push_back((LPCSTR)TargetIP); //ip - 0
-            address.push_back((LPCSTR)lport); //port - 1
-            address.push_back((LPCSTR)TargetHostname); //hostname - 2
+            address.push_back((LPCSTR)TargetIP);                //ip - 0
+            address.push_back((LPCSTR)lport_str.c_str());       //port - 1
+            address.push_back((LPCSTR)TargetHostname);          //hostname - 2
         }
         catch (const std::exception&) { //if cant connect or client is offline
             printf("%s Error accepting connections: %d", failed, WSAGetLastError()); 
@@ -138,9 +139,7 @@ void Server::accept_connections() {
         address.clear();
         // reprint handler line because input was interrupted
         printf("\n\x1B[38;5;159mhandler\x1B[38;2;231;72;86m> \033[0m");
-        
     }
-    return;
 }
 
 template <typename Out>
@@ -169,7 +168,7 @@ void Server::start_handler() {
 
         // using _stricmp because its not case specific and clean
         if (_stricmp(input.c_str(), "clear") == 0 ||
-            _stricmp(input.c_str(), "cls") == 0) 
+            _stricmp(input.c_str(), "cls") == 0)
         {   printf("\033[2J\033[1;1H");  } // another weird escape code thing
 
         // list all connections
@@ -215,7 +214,6 @@ void Server::start_handler() {
             printf("Command not recognized");
         }
     }
-    return;
 }
 
 void Server::list_connections() {
@@ -246,7 +244,6 @@ void Server::list_connections() {
     printf(              "| INDEX\t | IP-ADDRESS\t | PORT\t | HOSTNAME\n"                   );
     printf(                              (LPCSTR)list.c_str()                               );
     printf("\\\x1B[38;5;8m=======================================================\033[0m\n" );
-    return;
 }
 
 
@@ -258,10 +255,10 @@ bool Server::change_target(unsigned short int target) {
         printf("%s Not a valid selection\n", warn);
         return false;
     }
-    const char* mystr;
-    memset(&mystr, 0, std::string(all_addresses[target][2]).length());
-    printf("%s You are now connected to %s\n\n", success, all_addresses[target][2]);
-    //printf("==============================%s\n", mystr);
+    printf("%s You are now connected to %s\n", success, all_addresses[target][2]);
+    printf("=============================="); // make seperator matching the length of of the text above
+    for (std::size_t x = 0, length = std::string(all_addresses[target][2]).length(); x != length; ++x) 
+    {   putchar('=');   } printf("\n\n");
     return true;
 }
 
@@ -270,9 +267,32 @@ int Server::send_commands() {
     DWORD dwWrite, dwTotalWritten = 0;
     BOOL bSuccess = FALSE;
     bRunning = TRUE;
-    std::string usrinput;
+    std::wstring usrinput;
     while (bRunning)
     {
+        // send command
+        dwWrite, dwTotalWritten = 0;
+        bSuccess = FALSE;
+        ZeroMemory(&inputUser, sizeof(inputUser));
+        fgets(inputUser, sizeof(inputUser), stdin);
+        strtok(inputUser, "\n");
+        DWORD sent = 0;
+        while (sent < BUFFER_SIZE && (int)sent != SOCKET_ERROR)
+        {
+            sent += send(ClientSocket, inputUser + sent, BUFFER_SIZE - sent, 0);
+            if ((int)sent == SOCKET_ERROR)
+            {
+                printf("socketerror\n");
+                break;
+            }
+        }
+        while (dwTotalWritten < dwSockRead)
+        {
+            bSuccess = WriteFile((HANDLE)ClientSocket, inputUser + dwTotalWritten, sizeof(inputUser) - dwTotalWritten,
+                &dwWrite, NULL);
+            if (!bSuccess) { break; }
+            dwTotalWritten += dwWrite;
+        }
         // reveive
         ZeroMemory(&rdata, sizeof(rdata));
         dwSockRead = recv(ClientSocket, rdata, BUFFER_SIZE, 0);
@@ -300,33 +320,10 @@ int Server::send_commands() {
                 dwTotalWritten += dwWrite;
             }
         }
-        // send command
-        //dwWrite, dwTotalWritten = 0;
-        bSuccess = FALSE;
-        ZeroMemory(&inputUser, sizeof(inputUser));
-        fgets(inputUser, sizeof(inputUser), stdin);
-        strtok(inputUser, "\n");
-        DWORD sent = 0;
-        while (sent < BUFFER_SIZE && (int)sent != SOCKET_ERROR)
-        {
-            sent += send(ClientSocket, inputUser + sent, BUFFER_SIZE - sent, 0);
-            if ((int)sent == SOCKET_ERROR)
-            {
-                printf("socketerror\n");
-                break;
-            }
-        }
-        //while (dwTotalWritten < dwSockRead)
-        //{
-        //    bSuccess = WriteFile((HANDLE)ClientSocket, inputUser + dwTotalWritten, sizeof(inputUser) - dwTotalWritten,
-        //        &dwWrite, NULL);
-        //    if (!bSuccess) { break; }
-        //    dwTotalWritten += dwWrite;
-        //}
     }
-    all_connections.erase(all_connections.begin());
-    all_addresses.erase(all_addresses.begin());
     shutdown(ClientSocket, SD_BOTH);
     closesocket(ClientSocket);
+    all_connections.erase(all_connections.begin());
+    all_addresses.erase(all_addresses.begin());
     return 0;
 }
