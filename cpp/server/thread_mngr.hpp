@@ -1,3 +1,6 @@
+#ifndef THREAD_MNGR_HPP
+#define THREAD_MNGR_HPP
+
 #define _WINSOCKAPI_
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -24,7 +27,7 @@ private:
     HANDLE  hThreadArray[MAX_THREADS] = {};
 
 public:
-    Thread_Manager(const char* port) { lport = port; }
+    Thread_Manager(std::wstring port) { lport = port; }
 
     static DWORD WINAPI thread_start( LPVOID lpParam )
     {
@@ -33,13 +36,14 @@ public:
         return This->work(ppDataArray->job_number);
     }
 
-    DWORD work(int THREAD_JOB) 
+    DWORD work(int THREAD_JOB)
     {
         // get StdOutput Handle
         HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
-        if (hStdout == INVALID_HANDLE_VALUE)
+        if (hStdout == INVALID_HANDLE_VALUE) {
+            printf("invalid handle");
             return 1;
-
+        }
         while (true)
         {
             if (THREAD_JOB == 1) {
@@ -121,3 +125,5 @@ public:
         LocalFree(lpDisplayBuf);
     }
 };
+
+#endif //THREAD_MNGR_HPP
