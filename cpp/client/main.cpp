@@ -8,18 +8,18 @@
 
 #include "client.hpp"
 
-auto main(int argc, char* argv[]) -> int
+auto wmain(int argc, wchar_t* argv[], wchar_t* envp[]) -> int
 {
 	ShowWindow(GetConsoleWindow(), SW_SHOW);
 
-	const char* chost;
+	std::wstring chost;
 	unsigned short int cport;
 	if (argc == 3) {
 		chost = argv[1];
-		cport = atoi(argv[2]);
+		cport = atoi(LPCSTR(argv[2]));
 	}
 	else {
-		chost = "127.0.0.1";
+		chost = L"127.0.0.1";
 		cport = 999;
 	}
 
