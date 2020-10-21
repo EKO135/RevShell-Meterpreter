@@ -3,12 +3,12 @@
 #include <Windows.h>
 #include "thread_mngr.hpp"
 
-auto main(int argc, char* argv[]) -> int
+auto wmain(int argc, wchar_t* argv[], wchar_t* envp[]) -> int
 {
 	ShowWindow(GetConsoleWindow(), SW_SHOW);
-	const char* lport;
+	std::wstring lport;
 	if (argc == 2) { lport = argv[1]; }
-	else { lport = "999"; }
+	else { lport = L"999"; }
 
 	Thread_Manager TM(lport);
 	Thread_Manager* tmngr = &TM;
