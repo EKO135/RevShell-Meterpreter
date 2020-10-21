@@ -26,7 +26,7 @@ struct Commands
 class Client : Commands 
 {
 public:
-    Client(const char* chost, unsigned short int cport);
+    Client(std::wstring chost, unsigned short int cport);
     void create_socket();
     bool connect_socket();
     bool check_connection();
@@ -40,7 +40,7 @@ private:
     struct sockaddr_in addr;
     SOCKET socket = INVALID_SOCKET;
     char rdata[BUFFER_SIZE];
-    const char* server;
+    std::wstring server;
     unsigned short int port;
 };
 
