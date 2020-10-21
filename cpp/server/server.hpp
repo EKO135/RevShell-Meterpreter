@@ -1,6 +1,7 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
+#undef UNICODE
 #include <WinSock2.h>
 #include <unordered_map>
 #include <WS2tcpip.h>
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <tchar.h>
 #include <strsafe.h>
+#include <codecvt>
 #define BUFFER_SIZE (2048)
 
 
@@ -33,7 +35,8 @@ struct Commands
 class Server : Commands
 {
 public:
-    const char* lport;
+    std::wstring lport;
+    std::string lport_str;
 
 public:
     // SOCKET
